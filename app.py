@@ -19,7 +19,7 @@ wind = st.slider("Wind Speed (km/h)", 1.0, 20.0, 10.0)
 
 if st.button("Predict Air Quality Status"):
     features = np.array([[temp, humidity, pm25, wind]])
-    prediction = model.predict(features)
+    prediction = model.predict(features)[0]
     
     st.markdown("---")
     st.subheader(f"🚨 Predicted AQI: {prediction:.2f}")
