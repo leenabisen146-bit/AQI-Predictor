@@ -3,67 +3,73 @@ import requests
 import pickle
 import numpy as np
 
-# Page Configuration Setup
 st.set_page_config(page_title="Live Smart City AQI Predictor", page_icon="🌱")
 st.title("🌱 Live Smart City AQI Predictor")
-st.caption("Target: SDG Goal 11 - Live Urban Quality Infrastructure Integration")
+st.caption("Target: SDG Goal 11 - Live Urban Air Quality Integration")
 
-# Free Open-Source API Token (This fetches data directly from monitoring stations globally)
-TOKEN = "demo" # Temporary open token for demonstration purposes
+TOKEN = st.secrets["WAQI_TOKEN"]
 
-# 1. User inputs a city name dynamically (Default set to Nagpur as per Sir's requirement)
-city = st.text_input("Enter Smart City Name for Live Analysis:", "Nagpur")
+@st.cache_resource
+def load_model():
+    with open("aqi_model.pkl", "rb") as f:
+        return pickle.load(f)
+
+city = st.text_input("Enter city name:", "Nagpur")
 
 if city:
-    st.write(f"⏳ Fetching live government telemetry stations in **{city}**...")
-    
-    # API Link to get live data from World Air Quality Index api
-    url = f"https://api.waqi.info/feed/{city}/?token={TOKEN}"
-    response = requests.get(url).json()
-    
-    if response['status'] == 'ok':
-        data = response['data']
-        station_name = data['city']['name']
-        live_aqi = data['aqi']
-        
-        # Pulling live environmental parameters from nearest weather sensors
-        # If any parameter is missing, we use standard nominal averages
-        iaq_data = data.get('iaq', {})
-        pm25 = iaq_data.get('pm25', {}).get('v', 45.0)
-        temp = iaq_data.get('t', {}).get('v', 30.0)
-        humidity = iaq_data.get('h', {}).get('v', 55.0)
-        wind = iaq_data.get('w', {}).get('v', 8.5)
-        
-        # Displaying the live details fetched by your app
-        st.info(f"📍 **Nearest Monitoring Station Connected:** {station_name}")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Live Temperature", f"{temp} °C")
-        col2.metric("Live Humidity", f"{humidity} %")
-        col3.metric("Live PM2.5 Level", f"{pm25} µg/m³")
-        col4.metric("Live Wind Speed", f"{wind} km/h")
-        
-        # 2. RUNNING YOUR AI BRAIN PERMANENTLY ON LIVE DATA
-        # (This is where the magic happens - AI predicts the trend shift)
-        try:
-            with open('aqi_model.pkl', 'rb') as file:
-                model = pickle.load(file)
-            
-            features = np.array([[temp, humidity, pm25, wind]])
-            ai_predicted_trend = model.predict(features)[0]
-            
-            st.markdown("---")
-            st.subheader(f"📊 Live Predicted AQI by AI System: {ai_predicted_trend:.2f} (Base Station Raw: {live_aqi})")
-            
-            if ai_predicted_trend <= 50:
-                st.success("🟢 SDG Status: Safe & Clean. Perfect environment criteria.")
-            elif ai_predicted_trend <= 100:
-                st.warning("🟡 SDG Status: Moderate. Acceptable atmospheric quality.")
-            else:
-                st.error("🔴 SDG Status: Unhealthy Alert! Immediate environmental mitigation required under SDG 11.")
-                
-        except Exception as e:
-            st.warning("AI predictive mapping processing baseline calibrated.")
-            
-    else:
-        st.error("⚠️ City not found or station reporting framework offline. Please try another standard smart city.")
+    try:
+        url = f"https://api.waqi.info/feed/{requests.utils.quote(city)}/"
+        resp = requests.get(url, params={"token": TOKEN}, timeout=10).json()
+    except Exception:
+        st.error("Could not reach the AQI service. Check internet and try again.")
+        st.stop()
+
+    if resp.get("status") != "ok":
+        st.error("City not found or no station available. Try another city.")
+        st.stop()
+
+    data = resp["data"]
+    iaqi = data.get("iaqi", {})          # NOTE: 'iaqi', not 'iaq'
+    st.info(f"📍 Data from monitoring station: {data['city']['name']}")
+
+    labels = {"t": "Temperature (°C)", "h": "Humidity (%)",
+              "pm25": "PM2.5 (µg/m³)", "w": "Wind speed (m/s)"}
+    defaults = {"t": 30.0, "h": 55.0, "pm25": 45.0, "w": 2.0}
+
+    live = {k: iaqi.get(k, {}).get("v") for k in labels}
+    missing = [labels[k] for k, v in live.items() if v is None]
+    if missing:
+        st.warning("Station did not report: " + ", ".join(missing)
+                   + ". Please enter these manually below.")
+
+    values = {}
+    for k in ["t", "h", "pm25", "w"]:
+        if live[k] is not None:
+            values[k] = float(live[k])
+        else:
+            values[k] = st.number_input(labels[k], value=defaults[k])
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Temperature", f"{values['t']} °C")
+    c2.metric("Humidity", f"{values['h']} %")
+    c3.metric("PM2.5", f"{values['pm25']} µg/m³")
+    c4.metric("Wind", f"{values['w']} m/s")
+
+    try:
+        model = load_model()
+        # order must match training: Temperature, Humidity, PM2.5, Wind Speed
+        X = np.array([[values["t"], values["h"], values["pm25"], values["w"]]])
+        pred = model.predict(X)[0]
+
+        st.markdown("---")
+        st.subheader(f"📊 AI Predicted AQI: {pred:.0f}  (Station reported AQI: {data['aqi']})")
+
+        if pred <= 50:
+            st.success("🟢 Good / Safe")
+        elif pred <= 100:
+            st.warning("🟡 Moderate")
+        else:
+            st.error("🔴 Poor / Unhealthy")
+    except Exception as e:
+        st.error(f"Model error: {e}")
+        st.caption("Data source: World Air Quality Index Project (aqicn.org)")
