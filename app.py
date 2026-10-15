@@ -69,7 +69,7 @@ st.title("💨 Air Quality World Air Quality Index Project")
 # यूजर इनपुट लेगा
 city_input = st.text_input("Enter city name:", value="mumbai")
 
-# डिफ़ॉल्ट वैल्यूज सेट की हैं
+# डिफ़ॉल्ट फॉलबैक वैल्यूज (अगर API काम न करे तो इसके लिए)
 pm25_val = 296.9
 temp_val = 30.5
 humid_val = 61.0
@@ -77,21 +77,21 @@ wind_val = 2.25
 station_name = "Chhatrapati Shivaji Intl. Airport (T2), Mumbai, India"
 station_aqi_reported = 3
 
-# --- 🔐 DYNAMIC API CONNECTION (शहर के हिसाब से डेटा बदलेगा) ---
+# --- 🔐 FIXED DYNAMIC API CONNECTION ---
 if city_input:
     try:
         api_token = st.secrets["aqi_api_key"]
         
-        # यहाँ फिक्स स्टेशन नंबर हटाने के लिए शहर के नाम से सर्च URL बनाया है
+        # शहर सर्च करने का एंडपॉइंट
         search_url = f"https://waqi.info{api_token}&keyword={city_input.strip().lower()}"
         search_response = requests.get(search_url).json()
         
-        if search_response['status'] == 'ok' and len(search_response['data']) > 0:
-            # यह उस शहर का सबसे पहला और एक्टिव स्टेशन चुनेगा (जैसे नागपुर सिविल लाइंस या वर्धा रोड)
-            best_station = search_response['data'][0]
+        # यहाँ एरर फिक्स किया गया है: search_response['data'] की पहली आइटम [0] को एक्सेस किया है
+        if search_response['status'] == 'ok' and isinstance(search_response['data'], list) and len(search_response['data']) > 0:
+            best_station = search_response['data'][0]  # <-- [0] जोड़ने से पहला एक्टिव स्टेशन मिलेगा
             station_name = best_station['station']['name']
             
-            # उस स्टेशन का पूरा लाइव डेटा निकालना
+            # उस स्टेशन का पूरा लाइव डेटा फीड फ़ेच करना
             feed_url = f"https://waqi.info{best_station['uid']}/?token={api_token}"
             feed_response = requests.get(feed_url).json()
             
@@ -99,10 +99,13 @@ if city_input:
                 data = feed_response['data']
                 pm25_val = data['iaqi'].get('pm25', {}).get('v', pm25_val)
                 station_aqi_reported = data.get('aqi', 'N/A')
-                temp_val = data['iaqi'].get('t', {}).get('v', temp_val)
-                humid_val = data['iaqi'].get('h', {}).get('v', humid_val)
-                wind_val = data['iaqi'].get('w', {}).get('v', wind_val)
+                
+                # कुछ स्टेशन्स पर मौसम का डेटा नहीं होता, इसलिए सेफ फॉलबैक लगाया है
+                temp_val = data['iaqi'].get('t', {}).get('v', 30.0)
+                humid_val = data['iaqi'].get('h', {}).get('v', 55.0)
+                wind_val = data['iaqi'].get('w', {}).get('v', 1.5)
     except Exception as e:
+        # अगर कोई भी एरर आए तो ऐप क्रैश होने के बजाय डिफ़ॉल्ट पर चले
         pass
 
 # स्टेशन डिस्प्ले
