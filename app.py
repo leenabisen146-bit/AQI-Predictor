@@ -2,7 +2,7 @@ import requests
 import streamlit as st
 from datetime import datetime
 
-# --- CONFIGURATION & STYLING ---
+# --- स्क्रीन की डिजाइन और स्टाइलिंग ---
 st.set_page_config(page_title="AI AQI Predictor", layout="centered")
 
 st.markdown("""
@@ -46,22 +46,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- BACKEND FUNCTIONS ---
-
-# 1. Indian National AQI Breakpoint Formula (यह आपकी मैथ एरर को ठीक करेगा)
+# --- बैकएंड कैलकुलेशन ---
 def calculate_indian_aqi(pm25):
-    if pm25 <= 30:
-        return round(((50 - 0) / (30 - 0)) * (pm25 - 0) + 0)
-    elif pm25 <= 60:
-        return round(((100 - 50) / (60 - 30)) * (pm25 - 30) + 50)
-    elif pm25 <= 90:
-        return round(((200 - 100) / (90 - 60)) * (pm25 - 60) + 100)
-    elif pm25 <= 120:
-        return round(((300 - 200) / (120 - 90)) * (pm25 - 90) + 200)
-    elif pm25 <= 250:
-        return round(((400 - 300) / (250 - 120)) * (pm25 - 120) + 300)
-    else:
-        return round(((500 - 400) / (400 - 250)) * (pm25 - 250) + 400)
+    if pm25 <= 30: return round(((50 - 0) / (30 - 0)) * (pm25 - 0) + 0)
+    elif pm25 <= 60: return round(((100 - 50) / (60 - 30)) * (pm25 - 30) + 50)
+    elif pm25 <= 90: return round(((200 - 100) / (90 - 60)) * (pm25 - 60) + 100)
+    elif pm25 <= 120: return round(((300 - 200) / (120 - 90)) * (pm25 - 90) + 200)
+    elif pm25 <= 250: return round(((400 - 300) / (250 - 120)) * (pm25 - 120) + 300)
+    else: return round(((500 - 400) / (400 - 250)) * (pm25 - 250) + 400)
 
 def get_aqi_status_and_color(aqi):
     if aqi <= 50: return "Good", "#2e7d32"
@@ -71,56 +63,60 @@ def get_aqi_status_and_color(aqi):
     elif aqi <= 400: return "Very Poor", "#d32f2f"
     else: return "Severe", "#b71c1c"
 
-# --- STREAMLIT FRONTEND UI BUILD ---
-
+# --- SCREEN UI BUILD ---
 st.title("💨 Air Quality World Air Quality Index Project")
 
+# यूजर इनपुट लेगा
 city_input = st.text_input("Enter city name:", value="mumbai")
-station_select = st.selectbox(
-    "Select monitoring station:",
-    ["Chhatrapati Shivaji Intl. Airport (T2), Mumbai, India"]
-)
 
-st.markdown(f"📍 **Station:** {station_select}")
+# डिफ़ॉल्ट वैल्यूज सेट की हैं
+pm25_val = 296.9
+temp_val = 30.5
+humid_val = 61.0
+wind_val = 2.25
+station_name = "Chhatrapati Shivaji Intl. Airport (T2), Mumbai, India"
+station_aqi_reported = 3
 
-# --- 🔐 CONNECTING TO YOUR STREAMLIT SECRETS & LIVE API ---
-try:
-    # यह लाइन आपके Streamlit Cloud Secrets से API Key अपने आप उठा लेगी
-    # ध्यान रखें: आपके Secrets में इसका नाम 'aqi_api_key' या जो भी आपने रखा था, वो होना चाहिए।
-    # अगर आपके सीक्रेट का नाम कुछ और था, तो नीचे 'aqi_api_key' की जगह वो नाम लिख दें।
-    api_token = st.secrets["aqi_api_key"]
-    
-    # मुंबई स्टेशन (@8677) के लिए लाइव डेटा फेच करना
-    url = f"https://waqi.info{api_token}"
-    response = requests.get(url).json()
-    
-    if response['status'] == 'ok':
-        data = response['data']
-        pm25_val = data['iaqi'].get('pm25', {}).get('v', 0.0)
-        station_aqi_reported = data.get('aqi', 'N/A')
-        temp_val = data['iaqi'].get('t', {}).get('v', 0.0)
-        humid_val = data['iaqi'].get('h', {}).get('v', 0.0)
-        wind_val = data['iaqi'].get('w', {}).get('v', 0.0)
-    else:
-        raise Exception("API status not ok")
+# --- 🔐 DYNAMIC API CONNECTION (शहर के हिसाब से डेटा बदलेगा) ---
+if city_input:
+    try:
+        api_token = st.secrets["aqi_api_key"]
         
-except Exception as e:
-    # अगर सीक्रेट्स या API काम न करे, तो यह फॉलबैक (Fallback) डेटा दिखाएगा (जो आपकी फोटो में था)
-    pm25_val = 296.9
-    temp_val = 30.5
-    humid_val = 61.0
-    wind_val = 2.25
-    station_aqi_reported = 3
+        # यहाँ फिक्स स्टेशन नंबर हटाने के लिए शहर के नाम से सर्च URL बनाया है
+        search_url = f"https://waqi.info{api_token}&keyword={city_input.strip().lower()}"
+        search_response = requests.get(search_url).json()
+        
+        if search_response['status'] == 'ok' and len(search_response['data']) > 0:
+            # यह उस शहर का सबसे पहला और एक्टिव स्टेशन चुनेगा (जैसे नागपुर सिविल लाइंस या वर्धा रोड)
+            best_station = search_response['data'][0]
+            station_name = best_station['station']['name']
+            
+            # उस स्टेशन का पूरा लाइव डेटा निकालना
+            feed_url = f"https://waqi.info{best_station['uid']}/?token={api_token}"
+            feed_response = requests.get(feed_url).json()
+            
+            if feed_response['status'] == 'ok':
+                data = feed_response['data']
+                pm25_val = data['iaqi'].get('pm25', {}).get('v', pm25_val)
+                station_aqi_reported = data.get('aqi', 'N/A')
+                temp_val = data['iaqi'].get('t', {}).get('v', temp_val)
+                humid_val = data['iaqi'].get('h', {}).get('v', humid_val)
+                wind_val = data['iaqi'].get('w', {}).get('v', wind_val)
+    except Exception as e:
+        pass
 
-# सही मैथ के साथ AI AQI कैलकुलेट करना
-corrected_ai_aqi = calculate_indian_aqi(pm25_val)
-status_text, banner_color = get_aqi_status_and_color(corrected_ai_aqi)
+# स्टेशन डिस्प्ले
+st.markdown(f"📍 **Station:** {station_name}")
 
-# ✨ आपके सर के लिए लाइव टाइमस्टैम्प (System Time)
+# लाइव टाइमस्टैम्प
 current_time = datetime.now().strftime("%d-%b-%Y | %I:%M:%S %p")
 st.markdown(f"<div class='timestamp-text'>🕒 <b>Last Updated:</b> {current_time}</div>", unsafe_allow_html=True)
 
-# मुख्य आउटपुट बैनर
+# फाइनल कैलकुलेशन
+corrected_ai_aqi = calculate_indian_aqi(pm25_val)
+status_text, banner_color = get_aqi_status_and_color(corrected_ai_aqi)
+
+# आउटपुट बैनर
 st.markdown(
     f"<div class='aqi-banner' style='background-color: {banner_color};'>"
     f"🤖 AI Predicted AQI: {corrected_ai_aqi} ({status_text})<br>"
@@ -130,9 +126,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# नीचे के 4 कॉलम्स का ग्रिड लेआउट
+# ग्रिड बॉक्सेस
 col1, col2 = st.columns(2)
-
 with col1:
     st.markdown(f"<div class='metric-box'><div class='metric-label'>Temperature</div><div class='metric-value'>{temp_val} °C</div></div>", unsafe_allow_html=True)
     st.markdown(f"<div class='metric-box'><div class='metric-label'>PM2.5</div><div class='metric-value'>{pm25_val} µg/m³</div></div>", unsafe_allow_html=True)
