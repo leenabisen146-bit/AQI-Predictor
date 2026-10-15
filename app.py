@@ -69,7 +69,7 @@ st.title("💨 Air Quality World Air Quality Index Project")
 # यूजर इनपुट लेगा
 city_input = st.text_input("Enter city name:", value="mumbai")
 
-# डिफ़ॉल्ट फॉलबैक वैल्यूज (अगर API काम न करे तो इसके लिए)
+# डिफ़ॉल्ट फॉलबैक वैल्यूज (अगर कुछ भी काम न करे तब के लिए)
 pm25_val = 296.9
 temp_val = 30.5
 humid_val = 61.0
@@ -80,46 +80,48 @@ station_aqi_reported = 3
 # --- 🔐 FIXED DYNAMIC API CONNECTION ---
 if city_input:
     try:
+        # Streamlit Cloud Secrets से API token प्राप्त करना
         api_token = st.secrets["aqi_api_key"]
         
-        # शहर सर्च करने का एंडपॉइंट
+        # कीवर्ड के साथ शहर सर्च करना
         search_url = f"https://waqi.info{api_token}&keyword={city_input.strip().lower()}"
         search_response = requests.get(search_url).json()
         
-        # यहाँ एरर फिक्स किया गया है: search_response['data'] की पहली आइटम [0] को एक्सेस किया है
-        if search_response['status'] == 'ok' and isinstance(search_response['data'], list) and len(search_response['data']) > 0:
-            best_station = search_response['data'][0]  # <-- [0] जोड़ने से पहला एक्टिव स्टेशन मिलेगा
+        if search_response.get('status') == 'ok' and len(search_response.get('data', [])) > 0:
+            # एरर फिक्स: यहाँ [0] लगाया है ताकि लिस्ट की पहली आइटम (Best Match Station) सेलेक्ट हो
+            best_station = search_response['data'][0]  
             station_name = best_station['station']['name']
             
-            # उस स्टेशन का पूरा लाइव डेटा फीड फ़ेच करना
-            feed_url = f"https://waqi.info{best_station['uid']}/?token={api_token}"
+            # उस विशिष्ट स्टेशन की लाइव यूआईडी (UID) फ़ीड फ़ेच करना
+            feed_url = f"https://api.waqi.info/feed/@{best_station['uid']}/?token={api_token}"
             feed_response = requests.get(feed_url).json()
             
-            if feed_response['status'] == 'ok':
+            if feed_response.get('status') == 'ok':
                 data = feed_response['data']
-                pm25_val = data['iaqi'].get('pm25', {}).get('v', pm25_val)
-                station_aqi_reported = data.get('aqi', 'N/A')
                 
-                # कुछ स्टेशन्स पर मौसम का डेटा नहीं होता, इसलिए सेफ फॉलबैक लगाया है
-                temp_val = data['iaqi'].get('t', {}).get('v', 30.0)
-                humid_val = data['iaqi'].get('h', {}).get('v', 55.0)
-                wind_val = data['iaqi'].get('w', {}).get('v', 1.5)
+                # लाइव पैरामीटर्स निकालना
+                if 'pm25' in data.get('iaqi', {}):
+                    pm25_val = data['iaqi']['pm25'].get('v', pm25_val)
+                    
+                station_aqi_reported = data.get('aqi', 'N/A')
+                temp_val = data.get('iaqi', {}).get('t', {}).get('v', temp_val)
+                humid_val = data.get('iaqi', {}).get('h', {}).get('v', humid_val)
+                wind_val = data.get('iaqi', {}).get('w', {}).get('v', wind_val)
     except Exception as e:
-        # अगर कोई भी एरर आए तो ऐप क्रैश होने के बजाय डिफ़ॉल्ट पर चले
-        pass
+        # अगर कोई तकनीकी समस्या आए, तो स्क्रीन पर एरर मैसेज दिखाई देगा जिससे डिबग करना आसान हो
+        st.error(f"Error fetching data for {city_input}: {e}")
 
-# स्टेशन डिस्प्ले
+# स्टेशन का नाम डिस्प्ले करना
 st.markdown(f"📍 **Station:** {station_name}")
 
-# लाइव टाइमस्टैम्प
+# लाइव टाइमस्टैम्प (सर की डिमांड)
 current_time = datetime.now().strftime("%d-%b-%Y | %I:%M:%S %p")
 st.markdown(f"<div class='timestamp-text'>🕒 <b>Last Updated:</b> {current_time}</div>", unsafe_allow_html=True)
 
-# फाइनल कैलकुलेशन
+# फाइनल कैलकुलेशन और स्टेटस बैनर
 corrected_ai_aqi = calculate_indian_aqi(pm25_val)
 status_text, banner_color = get_aqi_status_and_color(corrected_ai_aqi)
 
-# आउटपुट बैनर
 st.markdown(
     f"<div class='aqi-banner' style='background-color: {banner_color};'>"
     f"🤖 AI Predicted AQI: {corrected_ai_aqi} ({status_text})<br>"
@@ -129,7 +131,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ग्रिड बॉक्सेस
+# नीचे के ४ मुख्य ग्रिड बॉक्सेस
 col1, col2 = st.columns(2)
 with col1:
     st.markdown(f"<div class='metric-box'><div class='metric-label'>Temperature</div><div class='metric-value'>{temp_val} °C</div></div>", unsafe_allow_html=True)
