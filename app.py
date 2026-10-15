@@ -25,7 +25,7 @@ if city:
         st.stop()
 
     if resp.get("status") != "ok":
-        st.error("City not found or no station available. Try another city.")
+        st.error(f"API response: {resp}")
         st.stop()
 
     data = resp["data"]
