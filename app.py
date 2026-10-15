@@ -81,7 +81,7 @@ station_aqi_reported = 3
 if city_input:
     try:
         # Streamlit Cloud Secrets से API token प्राप्त करना
-        api_token = st.secrets["aqi_api_key"]
+        WAQI_TOKEN = st.secrets["WAQI_TOKEN"]
         
         # कीवर्ड के साथ शहर सर्च करना
         search_url = f"https://waqi.info{api_token}&keyword={city_input.strip().lower()}"
