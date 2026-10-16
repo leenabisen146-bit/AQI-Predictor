@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import pickle
 import numpy as np
-
+from datetime import datetime, timezone, timedelta
 st.set_page_config(page_title="Live Smart City AQI Predictor", page_icon="🌱")
 st.title("🌱 Live Smart City AQI Predictor")
 st.caption("Target: SDG Goal 11 - Live Urban Air Quality Integration")
@@ -10,7 +10,7 @@ st.caption("Air quality: World Air Quality Index Project (aqicn.org) | Weather: 
 
 TOKEN = st.secrets["WAQI_TOKEN"]
 BASE = "https://api.waqi.info"
-
+IST = timezone(timedelta(hours=5, minutes=30))
 # US EPA PM2.5 breakpoints: (AQI_low, AQI_high, conc_low, conc_high in ug/m3)
 PM25_BP = [(0, 50, 0.0, 12.0), (51, 100, 12.1, 35.4), (101, 150, 35.5, 55.4),
            (151, 200, 55.5, 150.4), (201, 300, 150.5, 250.4),
@@ -68,7 +68,10 @@ if city:
 
     data = resp["data"]
     iaqi = data.get("iaqi", {})
-    st.info(f"📍 Station: {data['city']['name']}")
+        t = data.get("time", {})
+    st.info(f"📍 **{data['city']['name']}**  \n"
+            f"🕒 Station data time: {t.get('s', 'N/A')} (UTC{t.get('tz', '')})  \n"
+            f"⏱️ Now (IST): {datetime.now(IST):%d %b %Y, %I:%M %p}")
 
     # PM2.5 (WAQI gives AQI sub-index -> convert to ug/m3)
     pm25_aqi = iaqi.get("pm25", {}).get("v")
