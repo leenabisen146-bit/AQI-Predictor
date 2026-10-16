@@ -68,7 +68,7 @@ if city:
 
     data = resp["data"]
     iaqi = data.get("iaqi", {})
-        t = data.get("time", {})
+    t = data.get("time", {})
     st.info(f"📍 **{data['city']['name']}**  \n"
             f"🕒 Station data time: {t.get('s', 'N/A')} (UTC{t.get('tz', '')})  \n"
             f"⏱️ Now (IST): {datetime.now(IST):%d %b %Y, %I:%M %p}")
